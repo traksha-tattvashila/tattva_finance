@@ -1,15 +1,16 @@
-import React, { useState } from "react";
+import React from "react";
 import { Link } from "wouter";
 import { useFinance } from "@/context/FinanceContext";
-import { formatCurrency, formatMonth, formatDate } from "@/utils/formatters";
+import { formatCurrency, formatMonth } from "@/utils/formatters";
 import {
   ArrowRight,
-  Wallet,
   TrendingDown,
   PiggyBank,
   Target,
   AlertCircle,
   CirclePlus,
+  TrendingUp,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,8 +21,8 @@ export default function Dashboard() {
     currentMonthBudget,
     currentMonthCategories,
     currentMonthExpenses,
-    currentMonthAdditionalIncome,
     goals,
+    rollovers,
     getTotalIncome,
     settings,
   } = useFinance();
@@ -30,10 +31,10 @@ export default function Dashboard() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] text-center px-4 space-y-5">
         <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <Wallet className="w-8 h-8 text-primary" />
+          <PiggyBank className="w-8 h-8 text-primary" />
         </div>
         <div>
-          <h2 className="text-xl font-bold mb-1">No budget this month</h2>
+          <h2 className="text-2xl font-bold mb-2">No budget this month</h2>
           <p className="text-sm text-muted-foreground max-w-xs">
             Set up your budget for {formatMonth(new Date().toISOString().slice(0, 7))} to start tracking.
           </p>
@@ -54,123 +55,169 @@ export default function Dashboard() {
   const isOverspent = totalSpent > totalIncome;
   const spendingPct = totalIncome > 0 ? Math.min((totalSpent / totalIncome) * 100, 100) : 0;
 
+  // ── Intelligent status message using real data ──
+  const prevRates = rollovers.map(r => (r.totalIncome > 0 ? r.totalExpenses / r.totalIncome : 0));
+  const avgRate = prevRates.length > 0
+    ? prevRates.reduce((s, r) => s + r, 0) / prevRates.length
+    : null;
+  const currentRate = totalIncome > 0 ? totalSpent / totalIncome : 0;
+
+  const statusMessage = (() => {
+    if (isOverspent) return { text: "Over budget — review your spending", icon: "⚠️", ok: false };
+    if (currentRate > 0.9) return { text: "Almost at the limit — tread carefully", icon: "🔴", ok: false };
+    if (currentRate > 0.75) {
+      if (avgRate !== null && currentRate > avgRate * 1.15) return { text: "Spending above your average this month", icon: "📈", ok: false };
+      return { text: "Spending is picking up — keep an eye on it", icon: "🟡", ok: null };
+    }
+    if (avgRate !== null && currentRate < avgRate * 0.9) return { text: "You're spending less than usual — great!", icon: "✨", ok: true };
+    if (totalSaved > 0 && goals.some(g => !g.completedAt)) return { text: "Building your savings nicely", icon: "🌱", ok: true };
+    if (currentRate < 0.4) return { text: "Excellent start — well within budget", icon: "🎯", ok: true };
+    if (currentRate < 0.6) return { text: "You're right on track this month", icon: "✅", ok: true };
+    return { text: "Managing well — keep it up", icon: "👍", ok: true };
+  })();
+
   const recentExpenses = [...currentMonthExpenses]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
   const activeGoals = goals.filter(g => !g.completedAt).slice(0, 3);
 
-  const availableMsg =
-    available < 0
-      ? "Overspent this month"
-      : available < totalIncome * 0.1
-      ? "Almost at your limit"
-      : available < totalIncome * 0.3
-      ? "Spending well"
-      : "You're on track";
-
   return (
     <div className="space-y-5">
-      {/* Month label */}
+      {/* Month + status */}
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-muted-foreground">{formatMonth(currentMonthBudget.month)}</p>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+          {formatMonth(currentMonthBudget.month)}
+        </p>
         {currentMonthBudget.status === "closed" && (
-          <span className="text-xs bg-secondary text-muted-foreground px-2 py-0.5 rounded-full">Month closed</span>
+          <span className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full font-medium uppercase tracking-wide">
+            Closed
+          </span>
         )}
       </div>
 
       {isOverspent && (
-        <Alert variant="destructive" className="py-3">
+        <Alert variant="destructive" className="py-3 rounded-xl">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="text-sm">
-            You've spent {formatCurrency(totalSpent - totalIncome, settings.currencySymbol)} over budget this month.
+            You've spent {formatCurrency(totalSpent - totalIncome, settings.currencySymbol)} over budget.
           </AlertDescription>
         </Alert>
       )}
 
-      {/* ── Hero Card ── */}
-      <Card className="bg-primary text-primary-foreground overflow-hidden relative">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white" />
-          <div className="absolute -bottom-12 -left-6 w-32 h-32 rounded-full bg-white" />
-        </div>
-        <CardContent className="p-6 relative">
-          <p className="text-sm font-medium opacity-80 mb-1">Available Money</p>
-          <p className={`text-4xl font-bold tabular-nums mb-1 ${isOverspent ? "opacity-80" : ""}`}>
+      {/* ── Premium Hero Card ── */}
+      <div
+        className="relative overflow-hidden rounded-2xl text-white shadow-lg"
+        style={{
+          background: "linear-gradient(135deg, #5B21B6 0%, #4C1D95 55%, #3B0764 100%)",
+        }}
+      >
+        {/* Decorative circles */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/5" />
+        <div className="absolute -bottom-14 -left-8 w-36 h-36 rounded-full bg-white/5" />
+        <div className="absolute top-4 right-16 w-16 h-16 rounded-full bg-white/5" />
+
+        <div className="relative p-5">
+          {/* Status message */}
+          <div className="flex items-center gap-1.5 mb-4">
+            <span className="text-sm">{statusMessage.icon}</span>
+            <span className="text-xs font-medium text-white/75">{statusMessage.text}</span>
+          </div>
+
+          {/* Main amount */}
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60 mb-1">
+            Available Money
+          </p>
+          <p className="text-5xl font-bold tabular-nums tracking-tight mb-1 leading-none">
             {formatCurrency(available, settings.currencySymbol)}
           </p>
-          <p className="text-xs opacity-70">{availableMsg}</p>
+          <p className="text-xs text-white/50 mb-5">
+            of {formatCurrency(totalIncome, settings.currencySymbol)} total income
+          </p>
 
           {/* Spending bar */}
-          <div className="mt-5 mb-4">
-            <div className="h-1.5 rounded-full bg-white/20 overflow-hidden">
+          <div className="mb-4">
+            <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${isOverspent ? "bg-red-300" : "bg-white"}`}
-                style={{ width: `${spendingPct}%` }}
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${spendingPct}%`,
+                  background: isOverspent
+                    ? "rgba(255,100,100,0.9)"
+                    : spendingPct > 80
+                    ? "rgba(251,191,36,0.9)"
+                    : "rgba(255,255,255,0.85)",
+                }}
               />
             </div>
-            <div className="flex justify-between text-xs opacity-70 mt-1">
-              <span>0</span>
-              <span>{formatCurrency(totalIncome, settings.currencySymbol)}</span>
+            <div className="flex justify-between text-[10px] text-white/40 mt-1">
+              <span>0%</span>
+              <span>{spendingPct.toFixed(0)}% spent</span>
+              <span>100%</span>
             </div>
           </div>
 
           {/* Three chips */}
-          <div className="grid grid-cols-3 gap-3">
-            <StatChip
+          <div className="grid grid-cols-3 gap-2.5">
+            <HeroChip
               label="Available"
               value={formatCurrency(available, settings.currencySymbol)}
-              subtle
+              positive={available >= 0}
             />
-            <StatChip
+            <HeroChip
               label="Spent"
               value={formatCurrency(totalSpent, settings.currencySymbol)}
-              subtle
+              neutral
             />
-            <StatChip
+            <HeroChip
               label="Saved"
               value={formatCurrency(totalSaved, settings.currencySymbol)}
-              subtle
+              positive
             />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* ── Category Overview ── */}
       {currentMonthCategories.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold">Categories</CardTitle>
+            <CardTitle className="text-sm font-semibold">Budget Categories</CardTitle>
             <Link href="/planner">
               <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground px-2">
-                Manage <ArrowRight className="w-3 h-3 ml-1" />
+                Edit <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             </Link>
           </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
+          <CardContent className="px-4 pb-4 space-y-3.5">
             {currentMonthCategories.map(cat => {
               const spent = currentMonthExpenses
                 .filter(e => e.categoryId === cat.id)
                 .reduce((sum, e) => sum + e.amount, 0);
               const pct = cat.allocatedAmount > 0 ? Math.min((spent / cat.allocatedAmount) * 100, 100) : 0;
               const isWarn = pct > 80;
+              const isOver = spent > cat.allocatedAmount && cat.allocatedAmount > 0;
               return (
                 <div key={cat.id}>
-                  <div className="flex justify-between items-baseline mb-1.5">
-                    <span className="text-sm font-medium">{cat.name}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums ml-2 shrink-0">
-                      {formatCurrency(spent, settings.currencySymbol)} / {formatCurrency(cat.allocatedAmount, settings.currencySymbol)}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                    <span className="text-sm font-medium flex-1">{cat.name}</span>
+                    <span className={`text-xs tabular-nums ${isOver ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+                      {formatCurrency(spent, settings.currencySymbol)}
+                      {cat.allocatedAmount > 0 && ` / ${formatCurrency(cat.allocatedAmount, settings.currencySymbol)}`}
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor: isWarn ? "hsl(var(--destructive))" : cat.color,
-                      }}
-                    />
-                  </div>
+                  {cat.allocatedAmount > 0 && (
+                    <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: isWarn ? "hsl(var(--destructive))" : cat.color,
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -192,15 +239,23 @@ export default function Dashboard() {
           <CardContent className="px-4 pb-4">
             {recentExpenses.length === 0 ? (
               <div className="text-center py-6">
-                <TrendingDown className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground">No expenses yet</p>
-                <p className="text-xs text-muted-foreground">Use the + button to add one</p>
+                <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-2">
+                  <TrendingDown className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <p className="text-xs text-muted-foreground mb-1">No expenses yet</p>
+                <p className="text-xs text-primary font-medium">Tap + to add one</p>
               </div>
             ) : (
               <div className="divide-y divide-border/40">
                 {recentExpenses.map(e => (
-                  <div key={e.id} className="flex justify-between items-center py-2.5 first:pt-0 last:pb-0">
-                    <div className="min-w-0 pr-2">
+                  <div key={e.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold"
+                      style={{ backgroundColor: currentMonthCategories.find(c => c.id === e.categoryId)?.color ?? "hsl(var(--muted))" }}
+                    >
+                      {e.categoryName.charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{e.name}</p>
                       <p className="text-xs text-muted-foreground">{e.categoryName}</p>
                     </div>
@@ -227,10 +282,12 @@ export default function Dashboard() {
           <CardContent className="px-4 pb-4">
             {activeGoals.length === 0 ? (
               <div className="text-center py-6">
-                <PiggyBank className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground">No goals yet</p>
+                <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-2">
+                  <Target className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <p className="text-xs text-muted-foreground mb-1">No goals yet</p>
                 <Link href="/goals">
-                  <Button variant="ghost" size="sm" className="mt-1 h-7 text-xs text-primary">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs text-primary mt-1">
                     <CirclePlus className="w-3.5 h-3.5 mr-1" /> Create a goal
                   </Button>
                 </Link>
@@ -242,14 +299,22 @@ export default function Dashboard() {
                   return (
                     <div key={g.id} className="py-2.5 first:pt-0 last:pb-0">
                       <div className="flex justify-between items-baseline mb-1.5">
-                        <span className="text-sm font-medium truncate mr-2">{g.name}</span>
-                        <span className="text-xs text-muted-foreground tabular-nums shrink-0">{pct.toFixed(0)}%</span>
+                        <span className="text-sm font-medium">{g.name}</span>
+                        <span className="text-xs font-semibold text-primary tabular-nums">{pct.toFixed(0)}%</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-emerald-500 transition-all"
+                          className="h-full rounded-full bg-primary transition-all"
                           style={{ width: `${pct}%` }}
                         />
+                      </div>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {formatCurrency(g.currentAmount, settings.currencySymbol)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {formatCurrency(g.targetAmount, settings.currencySymbol)}
+                        </span>
                       </div>
                     </div>
                   );
@@ -259,15 +324,51 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Month trend (only if previous data exists) */}
+      {rollovers.length >= 1 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2 pb-2 pt-4 px-4">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm font-semibold">This vs Last Month</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            {(() => {
+              const lastRollover = [...rollovers].sort((a, b) => b.fromMonth.localeCompare(a.fromMonth))[0];
+              const lastRate = lastRollover.totalIncome > 0
+                ? (lastRollover.totalExpenses / lastRollover.totalIncome * 100)
+                : 0;
+              const delta = currentRate * 100 - lastRate;
+              return (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-secondary/50 rounded-xl p-3 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Last Month</p>
+                    <p className="text-lg font-bold tabular-nums">{lastRate.toFixed(0)}%</p>
+                    <p className="text-[10px] text-muted-foreground">of income spent</p>
+                  </div>
+                  <div className="bg-secondary/50 rounded-xl p-3 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">This Month</p>
+                    <p className="text-lg font-bold tabular-nums">{(currentRate * 100).toFixed(0)}%</p>
+                    <div className={`flex items-center justify-center gap-1 text-[10px] font-medium ${delta > 0 ? "text-destructive" : "text-emerald-500"}`}>
+                      {delta > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                      <span>{Math.abs(delta).toFixed(0)}% {delta > 0 ? "more" : "less"}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
 
-function StatChip({ label, value, subtle }: { label: string; value: string; subtle?: boolean }) {
+function HeroChip({ label, value, positive, neutral }: { label: string; value: string; positive?: boolean; neutral?: boolean }) {
   return (
-    <div className={`rounded-xl p-3 text-center ${subtle ? "bg-white/10" : "bg-white/15"}`}>
-      <p className="text-[10px] font-medium opacity-70 mb-0.5 uppercase tracking-wide">{label}</p>
-      <p className="text-sm font-bold tabular-nums leading-tight">{value}</p>
+    <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm">
+      <p className="text-[9px] font-semibold uppercase tracking-widest text-white/55 mb-1">{label}</p>
+      <p className="text-sm font-bold tabular-nums leading-tight text-white">{value}</p>
     </div>
   );
 }
