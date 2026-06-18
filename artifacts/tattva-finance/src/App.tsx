@@ -5,13 +5,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
 import { FinanceProvider, useFinance } from "@/context/FinanceContext";
 import { Layout } from "@/components/layout/Layout";
+import Setup from "@/pages/Setup";
 import Dashboard from "@/pages/Dashboard";
-import Budget from "@/pages/Budget";
+import Planner from "@/pages/Planner";
 import Expenses from "@/pages/Expenses";
 import Accounts from "@/pages/Accounts";
 import Reports from "@/pages/Reports";
 import Goals from "@/pages/Goals";
 import Settings from "@/pages/Settings";
+import AdvancedTools from "@/pages/AdvancedTools";
 import NotFound from "@/pages/not-found";
 
 function ThemeWrapper({ children }: { children: React.ReactNode }) {
@@ -29,16 +31,26 @@ function ThemeWrapper({ children }: { children: React.ReactNode }) {
 }
 
 function Router() {
+  const { settings, budgets } = useFinance();
+
+  // Show setup wizard for brand-new users only
+  const needsSetup = !settings.hasCompletedSetup && budgets.length === 0;
+
+  if (needsSetup) {
+    return <Setup />;
+  }
+
   return (
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/budget" component={Budget} />
+        <Route path="/planner" component={Planner} />
         <Route path="/expenses" component={Expenses} />
         <Route path="/accounts" component={Accounts} />
         <Route path="/reports" component={Reports} />
         <Route path="/goals" component={Goals} />
         <Route path="/settings" component={Settings} />
+        <Route path="/advanced" component={AdvancedTools} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -54,7 +66,7 @@ function App() {
             <Router />
           </WouterRouter>
           <Toaster />
-          <Sonner position="top-right" />
+          <Sonner position="top-right" richColors />
         </TooltipProvider>
       </ThemeWrapper>
     </FinanceProvider>

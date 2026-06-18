@@ -26,6 +26,8 @@ const defaultSettings: AppSettings = {
   currencySymbol: "₹",
   darkMode: false,
   appName: "Tattva Finance",
+  hasCompletedSetup: false,
+  budgetStyle: "simple",
 };
 
 interface CloseMonthOptions {
@@ -68,12 +70,7 @@ interface FinanceContextType {
   updateAccount: (id: string, updates: Partial<Account>) => void;
 
   accountTransfers: AccountTransfer[];
-  transferBetweenAccounts: (
-    fromId: string,
-    toId: string,
-    amount: number,
-    note?: string
-  ) => void;
+  transferBetweenAccounts: (fromId: string, toId: string, amount: number, note?: string) => void;
 
   rollovers: MonthRollover[];
   closeMonth: (budgetId: string, opts: CloseMonthOptions) => void;
@@ -105,12 +102,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     const rawBudgets = storageService.get<(MonthlyBudget & { income?: number })[]>(STORAGE_KEYS.BUDGETS, []);
-    setBudgets(rawBudgets.map(migrateBudget));
+    const migratedBudgets = rawBudgets.map(migrateBudget);
+    setBudgets(migratedBudgets);
+
+    const savedSettings = storageService.get<Partial<AppSettings>>(STORAGE_KEYS.SETTINGS, {});
+    const mergedSettings: AppSettings = { ...defaultSettings, ...savedSettings };
+
+    // Auto-mark setup complete for existing users who already have data
+    if (!mergedSettings.hasCompletedSetup && migratedBudgets.length > 0) {
+      mergedSettings.hasCompletedSetup = true;
+      mergedSettings.budgetStyle = "detailed"; // existing users get detailed mode
+    }
+    setSettings(mergedSettings);
+
     setAdditionalIncomeEntries(storageService.get(STORAGE_KEYS.ADDITIONAL_INCOME, []));
     setCategories(storageService.get(STORAGE_KEYS.CATEGORIES, []));
     setExpenses(storageService.get(STORAGE_KEYS.EXPENSES, []));
     setGoals(storageService.get(STORAGE_KEYS.GOALS, []));
-    setSettings(storageService.get(STORAGE_KEYS.SETTINGS, defaultSettings));
     setRollovers(storageService.get(STORAGE_KEYS.MONTH_ROLLOVERS, []));
     setAccountTransfers(storageService.get(STORAGE_KEYS.ACCOUNT_TRANSFERS, []));
 
@@ -146,7 +154,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     ? additionalIncomeEntries.filter(e => e.budgetId === currentMonthBudget.id)
     : [];
 
-  // Income helpers
   const getAdditionalIncomeTotal = (budgetId: string) =>
     additionalIncomeEntries
       .filter(e => e.budgetId === budgetId)
@@ -155,14 +162,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const getTotalIncome = (budget: MonthlyBudget) =>
     budget.salaryIncome + getAdditionalIncomeTotal(budget.id) + budget.carryForward;
 
-  // Helper: get previous month string
-  const getPrevMonthStr = (month: string): string => {
-    const [y, m] = month.split("-").map(Number);
-    const d = new Date(y, m - 2, 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
-
-  // Helper: get next month string
   const getNextMonthStr = (month: string): string => {
     const [y, m] = month.split("-").map(Number);
     const d = new Date(y, m, 1);
@@ -175,7 +174,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // ── Budgets ──
   const addBudget = (data: { month: string; salaryIncome: number }): MonthlyBudget => {
-    const prevMonth = getPrevMonthStr(data.month);
+    const prevMonth = (() => {
+      const [y, m] = data.month.split("-").map(Number);
+      const d = new Date(y, m - 2, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    })();
     const prevRollover = rollovers.find(r => r.fromMonth === prevMonth);
     const carryForward = prevRollover?.carryForward ?? 0;
 
@@ -196,11 +199,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // ── Additional Income ──
   const addAdditionalIncome = (data: Omit<AdditionalIncomeEntry, "id" | "date">) => {
-    const entry: AdditionalIncomeEntry = {
-      ...data,
-      id: uuidv4(),
-      date: new Date().toISOString(),
-    };
+    const entry: AdditionalIncomeEntry = { ...data, id: uuidv4(), date: new Date().toISOString() };
     setAdditionalIncomeEntries(prev => [entry, ...prev]);
   };
 
@@ -236,13 +235,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const updateAccount = (id: string, updates: Partial<Account>) =>
     setAccounts(prev => prev.map(a => (a.id === id ? { ...a, ...updates } : a)));
 
-  // ── Account Transfers ──
-  const transferBetweenAccounts = (
-    fromId: string,
-    toId: string,
-    amount: number,
-    note?: string
-  ) => {
+  // ── Transfers ──
+  const transferBetweenAccounts = (fromId: string, toId: string, amount: number, note?: string) => {
     const from = accounts.find(a => a.id === fromId);
     const to = accounts.find(a => a.id === toId);
     if (!from || !to) return;
@@ -268,7 +262,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAccountTransfers(prev => [transfer, ...prev]);
   };
 
-  // ── Month Rollover (Close Month) ──
+  // ── Close Month ──
   const closeMonth = (budgetId: string, opts: CloseMonthOptions) => {
     const budget = budgets.find(b => b.id === budgetId);
     if (!budget) return;
@@ -294,7 +288,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
     setRollovers(prev => [...prev, rollover]);
 
-    // Update account balances
     if (opts.savingsTransfer > 0 || opts.investmentTransfer > 0) {
       setAccounts(prev =>
         prev.map(a => {
@@ -307,10 +300,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
     }
 
-    // Mark budget as closed
     setBudgets(prev => prev.map(b => (b.id === budgetId ? { ...b, status: "closed" } : b)));
 
-    // If next month's budget already exists, update its carry forward
     if (opts.carryForward > 0) {
       const nextMonth = getNextMonthStr(budget.month);
       setBudgets(prev =>
@@ -323,11 +314,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // ── Goals ──
   const addGoal = (g: Omit<SavingsGoal, "id" | "createdAt" | "completedAt">) => {
-    const newGoal: SavingsGoal = {
-      ...g,
-      id: uuidv4(),
-      createdAt: new Date().toISOString(),
-    };
+    const newGoal: SavingsGoal = { ...g, id: uuidv4(), createdAt: new Date().toISOString() };
     if (newGoal.currentAmount >= newGoal.targetAmount) {
       newGoal.completedAt = new Date().toISOString();
     }
@@ -373,7 +360,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const importData = (data: unknown) => {
     const d = data as Record<string, unknown>;
-    if (d.settings) setSettings(d.settings as AppSettings);
+    if (d.settings) setSettings({ ...defaultSettings, ...(d.settings as Partial<AppSettings>) });
     if (d.budgets) setBudgets((d.budgets as (MonthlyBudget & { income?: number })[]).map(migrateBudget));
     if (d.additionalIncomeEntries) setAdditionalIncomeEntries(d.additionalIncomeEntries as AdditionalIncomeEntry[]);
     if (d.categories) setCategories(d.categories as Category[]);
@@ -397,12 +384,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     localStorage.clear();
   };
 
-  if (!isLoaded)
+  if (!isLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+      <div className="min-h-screen flex items-center justify-center text-muted-foreground text-sm">
         Loading...
       </div>
     );
+  }
 
   return (
     <FinanceContext.Provider

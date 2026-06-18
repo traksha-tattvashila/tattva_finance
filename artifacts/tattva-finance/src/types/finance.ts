@@ -2,7 +2,7 @@ export interface MonthlyBudget {
   id: string;
   month: string; // "YYYY-MM"
   salaryIncome: number;
-  carryForward: number; // auto-populated from previous month rollover
+  carryForward: number;
   createdAt: string;
   status: "active" | "closed";
 }
@@ -81,4 +81,6 @@ export interface AppSettings {
   currencySymbol: string;
   darkMode: boolean;
   appName: string;
+  hasCompletedSetup: boolean;
+  budgetStyle: "simple" | "detailed";
 }
