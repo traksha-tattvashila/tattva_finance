@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Budget from "@/pages/Budget";
 import Expenses from "@/pages/Expenses";
+import Accounts from "@/pages/Accounts";
 import Reports from "@/pages/Reports";
 import Goals from "@/pages/Goals";
 import Settings from "@/pages/Settings";
@@ -34,6 +35,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/budget" component={Budget} />
         <Route path="/expenses" component={Expenses} />
+        <Route path="/accounts" component={Accounts} />
         <Route path="/reports" component={Reports} />
         <Route path="/goals" component={Goals} />
         <Route path="/settings" component={Settings} />
