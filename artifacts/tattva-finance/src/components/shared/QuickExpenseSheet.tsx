@@ -39,6 +39,11 @@ export function QuickExpenseSheet() {
       toast.error("Set up a budget first before adding expenses");
       return;
     }
+    // Guard: block adding expenses to a closed month (B6)
+    if (currentMonthBudget.status === "closed") {
+      toast.error("This month is closed — open a new month in the Planner");
+      return;
+    }
     // Pre-select first category if none selected
     if (!categoryId && currentMonthCategories.length > 0) {
       setCategoryId(currentMonthCategories[0].id);

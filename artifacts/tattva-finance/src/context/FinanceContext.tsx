@@ -174,6 +174,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // ── Budgets ──
   const addBudget = (data: { month: string; salaryIncome: number }): MonthlyBudget => {
+    // Guard: return existing budget if one already exists for this month (B4)
+    const existing = budgets.find(b => b.month === data.month);
+    if (existing) return existing;
+
     const prevMonth = (() => {
       const [y, m] = data.month.split("-").map(Number);
       const d = new Date(y, m - 2, 1);
@@ -240,6 +244,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const from = accounts.find(a => a.id === fromId);
     const to = accounts.find(a => a.id === toId);
     if (!from || !to) return;
+    // Context-level guards (B5): prevent invalid or overdraft transfers
+    if (amount <= 0) return;
+    if (from.balance < amount) return;
 
     setAccounts(prev =>
       prev.map(a => {
@@ -266,6 +273,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const closeMonth = (budgetId: string, opts: CloseMonthOptions) => {
     const budget = budgets.find(b => b.id === budgetId);
     if (!budget) return;
+    // Guard: prevent double-closing (B1)
+    if (budget.status === "closed") return;
 
     const additionalTotal = getAdditionalIncomeTotal(budgetId);
     const totalIncome = budget.salaryIncome + additionalTotal + budget.carryForward;
@@ -288,13 +297,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
     setRollovers(prev => [...prev, rollover]);
 
+    // Fix (B3): only credit the FIRST account of each type — prevents doubling
+    // when a user has multiple savings or investment accounts
     if (opts.savingsTransfer > 0 || opts.investmentTransfer > 0) {
+      let savingsUpdated = false;
+      let investmentUpdated = false;
       setAccounts(prev =>
         prev.map(a => {
-          if (a.type === "savings" && opts.savingsTransfer > 0)
+          if (a.type === "savings" && opts.savingsTransfer > 0 && !savingsUpdated) {
+            savingsUpdated = true;
             return { ...a, balance: a.balance + opts.savingsTransfer };
-          if (a.type === "investment" && opts.investmentTransfer > 0)
+          }
+          if (a.type === "investment" && opts.investmentTransfer > 0 && !investmentUpdated) {
+            investmentUpdated = true;
             return { ...a, balance: a.balance + opts.investmentTransfer };
+          }
           return a;
         })
       );
@@ -302,11 +319,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setBudgets(prev => prev.map(b => (b.id === budgetId ? { ...b, status: "closed" } : b)));
 
+    // Fix (B2): SET carryForward on next month's budget, do not accumulate
+    // (addBudget already reads from the rollover record when creating a new month)
     if (opts.carryForward > 0) {
       const nextMonth = getNextMonthStr(budget.month);
       setBudgets(prev =>
         prev.map(b =>
-          b.month === nextMonth ? { ...b, carryForward: b.carryForward + opts.carryForward } : b
+          b.month === nextMonth ? { ...b, carryForward: opts.carryForward } : b
         )
       );
     }

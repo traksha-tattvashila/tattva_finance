@@ -23,31 +23,43 @@ export const exportToCSV = (filename: string, rows: any[]) => {
       })
       .join("\n");
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  if (link.download !== undefined) {
+  try {
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
     link.setAttribute("href", url);
     link.setAttribute("download", filename);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  } catch {
+    // Fallback for environments where blob downloads are blocked
+    const win = window.open("", "_blank");
+    if (win) win.document.write(`<pre>${csvContent.replace(/</g, "&lt;")}</pre>`);
   }
 };
 
 export const exportToJSON = (filename: string, data: any) => {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  });
-  const link = document.createElement("a");
-  if (link.download !== undefined) {
+  try {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
     link.setAttribute("href", url);
     link.setAttribute("download", filename);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    // Revoke the object URL after a short delay to allow the download to start (B7)
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  } catch {
+    // Fallback for Android WebViews and other environments that block blob downloads (B7)
+    const json = JSON.stringify(data, null, 2);
+    const win = window.open("", "_blank");
+    if (win) win.document.write(`<pre>${json.replace(/</g, "&lt;")}</pre>`);
   }
 };
