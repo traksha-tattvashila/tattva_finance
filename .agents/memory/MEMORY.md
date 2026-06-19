@@ -1,2 +1,3 @@
 - [Tattva Finance brand tokens](tattva-brand.md) — primary is Royal Purple #5B21B6; dark bg is #0F0B1A; Playfair Display headings via @layer base h1/h2 rule.
 - [Finance context migration](finance-context-migration.md) — existing users auto-migrate: hasCompletedSetup=true, budgetStyle=detailed if budgets exist on first load.
+- [Capacitor Android setup](capacitor-android.md) — android/ project at artifacts/tattva-finance/android/; webDir=dist/public; appId=com.tattvashila.finance; APK via GitHub Actions.

@@ -1,0 +1,127 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Build type (debug or release)"
+        required: false
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Node.js + pnpm ──────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      # ── Install dependencies ─────────────────────────────────
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── Build web app ────────────────────────────────────────
+      - name: Build production web app
+        working-directory: artifacts/tattva-finance
+        run: pnpm run build
+        env:
+          PORT: "4173"
+          BASE_PATH: "/"
+          NODE_ENV: production
+
+      # ── Java ─────────────────────────────────────────────────
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # ── Android SDK ──────────────────────────────────────────
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── Capacitor sync ───────────────────────────────────────
+      - name: Capacitor sync (copy web assets to Android)
+        working-directory: artifacts/tattva-finance
+        run: npx cap sync android --inline
+
+      # ── Gradle cache ─────────────────────────────────────────
+      - name: Cache Gradle files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('artifacts/tattva-finance/android/**/*.gradle*') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # ── Build debug APK ──────────────────────────────────────
+      - name: Make Gradle executable
+        working-directory: artifacts/tattva-finance/android
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        working-directory: artifacts/tattva-finance/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+
+      # ── Build release APK (only if signing secrets exist) ────
+      - name: Build release APK
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.build_type == 'release' &&
+          secrets.KEYSTORE_BASE64 != ''
+        working-directory: artifacts/tattva-finance/android
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/keystore.jks \
+            -Pandroid.injected.signing.store.password="${{ secrets.KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.KEY_PASSWORD }}" \
+            --no-daemon
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+
+      # ── Upload APK artifacts ─────────────────────────────────
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tattva-finance-debug-apk
+          path: artifacts/tattva-finance/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Upload release APK
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.build_type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tattva-finance-release-apk
+          path: artifacts/tattva-finance/android/app/build/outputs/apk/release/app-release*.apk
+          retention-days: 30
+          if-no-files-found: warn
